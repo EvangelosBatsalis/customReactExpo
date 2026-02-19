@@ -2,8 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { useFamily, useAuth } from '../App';
 import { mockDb } from '../services/mockDb';
-import { Task, TaskStatus } from '../types';
-import { Plus, CheckCircle2, Circle, Clock, Filter, Search, User, Calendar as CalIcon } from 'lucide-react';
+import { Task, TaskStatus, UserProfile } from '../types';
+import { Plus, CheckCircle2, Circle, Clock, Filter, Search, User, Calendar as CalIcon, Pencil, Trash2, ArrowRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
 export const Tasks: React.FC = () => {
@@ -13,12 +13,17 @@ export const Tasks: React.FC = () => {
   const [filter, setFilter] = useState<TaskStatus | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [assignedTo, setAssignedTo] = useState<string>('');
+  const [members, setMembers] = useState<UserProfile[]>([]);
 
   useEffect(() => {
     if (activeFamily) {
       setTasks(mockDb.getTasks(activeFamily.id));
+      const familyMembers = mockDb.getFamilyMembers(activeFamily.id);
+      setMembers(familyMembers.map(m => m.profile).filter((p): p is UserProfile => p !== undefined));
     }
   }, [activeFamily]);
 
@@ -28,30 +33,68 @@ export const Tasks: React.FC = () => {
     return matchesFilter && matchesSearch;
   });
 
-  const handleCreateTask = (e: React.FormEvent) => {
+  const resetModal = () => {
+    setIsModalOpen(false);
+    setEditingTask(null);
+    setNewTaskTitle('');
+    setDueDate('');
+    setAssignedTo('');
+  };
+
+  const openEditModal = (task: Task) => {
+    setEditingTask(task);
+    setNewTaskTitle(task.title);
+    setDueDate(task.dueDate || '');
+    setAssignedTo(task.assignedTo || '');
+    setIsModalOpen(true);
+  };
+
+  const handleSaveTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle || !activeFamily || !user) return;
-    const task = mockDb.upsertTask({
+    const taskData: any = {
       familyId: activeFamily.id,
       title: newTaskTitle,
       dueDate: dueDate || undefined,
-      createdBy: user.id,
-      status: TaskStatus.TODO
-    });
-    setTasks([task, ...tasks]);
-    setNewTaskTitle('');
-    setDueDate('');
-    setIsModalOpen(false);
+      assignedTo: assignedTo || undefined,
+      createdBy: editingTask ? editingTask.createdBy : user.id,
+      status: editingTask ? editingTask.status : TaskStatus.TODO
+    };
+    if (editingTask) {
+      taskData.id = editingTask.id;
+    }
+    const savedTask = mockDb.upsertTask(taskData);
+    if (editingTask) {
+      setTasks(prev => prev.map(t => t.id === editingTask.id ? savedTask : t));
+    } else {
+      setTasks([savedTask, ...tasks]);
+    }
+    resetModal();
   };
 
-  const toggleTaskStatus = (id: string) => {
+  const handleStatusChange = (id: string, newStatus: TaskStatus) => {
     const task = tasks.find(t => t.id === id);
-    if (!task) return;
+    if (!task || !activeFamily || !user) return;
+
+    let newAssignedTo = task.assignedTo;
+    if (newStatus === TaskStatus.DOING) {
+      newAssignedTo = user.id;
+    }
+
     const updated = mockDb.upsertTask({
       ...task,
-      status: task.status === TaskStatus.DONE ? TaskStatus.TODO : TaskStatus.DONE
+      status: newStatus,
+      assignedTo: newAssignedTo,
+      familyId: activeFamily.id,
+      createdBy: task.createdBy
     });
     setTasks(prev => prev.map(t => t.id === id ? updated : t));
+  };
+
+  const handleDeleteTask = (id: string) => {
+    if (!activeFamily) return;
+    mockDb.deleteTask(id, activeFamily.id);
+    setTasks(prev => prev.filter(t => t.id !== id));
   };
 
   return (
@@ -62,7 +105,7 @@ export const Tasks: React.FC = () => {
           <p className="text-slate-500">Manage daily chores and household errands.</p>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => { resetModal(); setIsModalOpen(true); }}
           className="bg-indigo-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all"
         >
           <Plus className="w-5 h-5" />
@@ -87,9 +130,8 @@ export const Tasks: React.FC = () => {
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                filter === f ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
-              }`}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${filter === f ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                }`}
             >
               {f.charAt(0) + f.slice(1).toLowerCase()}
             </button>
@@ -106,14 +148,17 @@ export const Tasks: React.FC = () => {
         ) : (
           filteredTasks.map(task => (
             <div key={task.id} className="group flex items-center gap-4 p-5 bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all">
-              <button onClick={() => toggleTaskStatus(task.id)} className="shrink-0">
-                {task.status === TaskStatus.DONE 
-                  ? <CheckCircle2 className="w-7 h-7 text-indigo-600" /> 
-                  : <Circle className="w-7 h-7 text-slate-300 group-hover:text-indigo-400" />
-                }
+              <button onClick={() => {
+                const nextStatus = task.status === TaskStatus.TODO ? TaskStatus.DOING :
+                  task.status === TaskStatus.DOING ? TaskStatus.DONE : TaskStatus.TODO;
+                handleStatusChange(task.id, nextStatus);
+              }} className="shrink-0">
+                {task.status === TaskStatus.DONE ? <CheckCircle2 className="w-7 h-7 text-indigo-600" /> :
+                  task.status === TaskStatus.DOING ? <ArrowRight className="w-7 h-7 text-amber-500" /> :
+                    <Circle className="w-7 h-7 text-slate-300 group-hover:text-indigo-400" />}
               </button>
-              <div className="flex-1">
-                <p className={`font-bold text-lg ${task.status === TaskStatus.DONE ? 'line-through text-slate-400' : 'text-slate-900'}`}>
+              <div className="flex-1 min-w-0">
+                <p className={`font-bold text-lg truncate ${task.status === TaskStatus.DONE ? 'line-through text-slate-400' : 'text-slate-900'}`}>
                   {task.title}
                 </p>
                 <div className="flex flex-wrap items-center gap-4 mt-1">
@@ -126,30 +171,36 @@ export const Tasks: React.FC = () => {
                   {task.assignedTo && (
                     <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-500 uppercase tracking-tight">
                       <User className="w-3.5 h-3.5" />
-                      Assigned
+                      {members.find(m => m.id === task.assignedTo)?.fullName || 'Assigned'}
                     </div>
                   )}
                 </div>
               </div>
-              <div className="hidden md:block">
-                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                  task.status === TaskStatus.DONE ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-600'
-                }`}>
+              <div className="hidden md:flex items-center gap-2">
+                <span className={`px-3 py-1 mr-2 rounded-full text-[10px] font-black uppercase tracking-widest ${task.status === TaskStatus.DONE ? 'bg-indigo-50 text-indigo-600' :
+                    task.status === TaskStatus.DOING ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600'
+                  }`}>
                   {task.status}
                 </span>
+                <button onClick={() => openEditModal(task)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors">
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button onClick={() => handleDeleteTask(task.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded-lg transition-colors">
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
           ))
         )}
       </div>
 
-      {/* New Task Modal */}
+      {/* Edit/Create Task Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden">
             <div className="p-8">
-              <h2 className="text-2xl font-bold mb-6">Create New Task</h2>
-              <form onSubmit={handleCreateTask} className="space-y-6">
+              <h2 className="text-2xl font-bold mb-6">{editingTask ? 'Edit Task' : 'Create New Task'}</h2>
+              <form onSubmit={handleSaveTask} className="space-y-6">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Title</label>
                   <input
@@ -171,10 +222,23 @@ export const Tasks: React.FC = () => {
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Assign To</label>
+                  <select
+                    value={assignedTo}
+                    onChange={e => setAssignedTo(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+                  >
+                    <option value="">Unassigned</option>
+                    {members.map(m => (
+                      <option key={m.id} value={m.id}>{m.fullName}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="flex gap-4 pt-4">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
+                    onClick={resetModal}
                     className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors"
                   >
                     Cancel
@@ -183,7 +247,7 @@ export const Tasks: React.FC = () => {
                     type="submit"
                     className="flex-[2] bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
                   >
-                    Add Task
+                    {editingTask ? 'Save Changes' : 'Add Task'}
                   </button>
                 </div>
               </form>

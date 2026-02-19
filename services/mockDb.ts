@@ -141,6 +141,11 @@ export const mockDb = {
     save(STORAGE_KEYS.TASKS, tasks);
     return newTask;
   },
+  deleteTask: (id: string, familyId: string) => {
+    const tasks = get<Task>(STORAGE_KEYS.TASKS);
+    const updatedTasks = tasks.filter(t => t.id !== id || t.familyId !== familyId);
+    save(STORAGE_KEYS.TASKS, updatedTasks);
+  },
 
   // Events
   getEvents: (familyId: string) => get<CalendarEvent>(STORAGE_KEYS.EVENTS).filter(e => e.familyId === familyId),
