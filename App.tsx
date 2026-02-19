@@ -14,6 +14,8 @@ import { Tasks } from './pages/Tasks';
 import { Calendar } from './pages/Calendar';
 import { Shopping } from './pages/Shopping';
 import { Finance } from './pages/Finance';
+import { Settings } from './pages/Settings';
+import { Join } from './pages/Join';
 import { Layout } from './components/Layout';
 
 // Contexts
@@ -38,7 +40,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   const { activeFamily, families } = useFamily();
   const location = useLocation();
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-bold text-indigo-600 animate-pulse">Loading Famly...</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center font-bold text-indigo-600 animate-pulse">Loading Famify...</div>;
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
 
   // If user has no families and not on onboarding, redirect
@@ -129,8 +131,9 @@ const App: React.FC = () => {
                       <Route path="/calendar" element={<Calendar />} />
                       <Route path="/shopping" element={<Shopping />} />
                       <Route path="/finance" element={<Finance />} />
+                      <Route path="/settings" element={<Settings />} />
+                      <Route path="/join" element={<Join />} />
                       <Route path="/members" element={<div className="p-8 text-center text-slate-400 font-medium">Members management feature coming soon in this demo...</div>} />
-                      <Route path="/settings" element={<div className="p-8 text-center text-slate-400 font-medium">Settings feature coming soon in this demo...</div>} />
                     </Routes>
                   </Layout>
                 </ProtectedRoute>

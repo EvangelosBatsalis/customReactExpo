@@ -262,5 +262,70 @@ export const supabaseService = {
             .delete()
             .eq('id', expenseId);
         if (error) throw error;
+    },
+
+    // Invites & Members
+    async addFamilyMember(familyId: string, userId: string, role: string) {
+        const { error } = await supabase
+            .from('family_members')
+            .insert([{ family_id: familyId, user_id: userId, role }]);
+
+        if (error) throw error;
+    },
+
+    async createInvite(familyId: string, email: string, role: string) {
+        // Simple random code generation
+        const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+        const { data, error } = await supabase
+            .from('invites')
+            .insert([{
+                family_id: familyId,
+                email,
+                invite_code: inviteCode,
+                role
+            }])
+            .select()
+            .single();
+
+        if (error) throw error;
+        return {
+            id: data.id,
+            familyId: data.family_id,
+            email: data.email,
+            inviteCode: data.invite_code,
+            role: data.role,
+            status: data.status,
+            createdAt: data.created_at
+        }; // Returns object with inviteCode
+    },
+
+    async getInvite(code: string) {
+        const { data, error } = await supabase
+            .from('invites')
+            .select('*, family:families(name)')
+            .eq('invite_code', code)
+            .eq('status', 'PENDING')
+            .single();
+
+        if (error) throw error;
+        return {
+            id: data.id,
+            familyId: data.family_id,
+            email: data.email,
+            inviteCode: data.invite_code,
+            role: data.role,
+            status: data.status,
+            familyName: data.family.name, // Join result
+            createdAt: data.created_at
+        };
+    },
+
+    async acceptInvite(inviteId: string) {
+        const { error } = await supabase
+            .from('invites')
+            .update({ status: 'ACCEPTED' })
+            .eq('id', inviteId);
+        if (error) throw error;
     }
 };

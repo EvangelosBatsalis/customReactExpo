@@ -6,6 +6,7 @@ import {
   Settings, LogOut, Users, ChevronDown, Plus, DollarSign
 } from 'lucide-react';
 import { authService } from '../services/authService';
+import { supabaseService } from '../services/supabaseService';
 import { useFamily } from '../App';
 
 interface NavItemProps {
@@ -33,6 +34,19 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const location = useLocation();
   const navigate = useNavigate();
   const [isFamilyMenuOpen, setIsFamilyMenuOpen] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
+
+  // Generate a random code when modal opens (mocking backend generation)
+  React.useEffect(() => {
+    if (showInviteModal && activeFamily) {
+      // In real app, call API to create invite. Here we mock it or just show a code.
+      // Let's create a real invite entry if possible, or just a random string for now.
+      supabaseService.createInvite(activeFamily.id, 'pending@invite', 'MEMBER')
+        .then(invite => setInviteCode(invite.inviteCode))
+        .catch(err => console.error("Failed to create invite", err));
+    }
+  }, [showInviteModal, activeFamily]);
 
   const handleLogout = async () => {
     await authService.signOut();
@@ -46,7 +60,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         <div className="p-6">
           <Link to="/" className="flex items-center gap-2 mb-8">
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold italic">F</div>
-            <span className="text-xl font-bold tracking-tight">Famly</span>
+            <span className="text-xl font-bold tracking-tight">Famify</span>
           </Link>
 
           {/* Family Switcher */}
@@ -87,12 +101,23 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                   </button>
                 ))}
                 <div className="border-t border-slate-100 my-2 pt-2">
-                  <Link
-                    to="/onboarding"
-                    className="flex items-center gap-3 p-2 rounded-lg text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                  <button
+                    onClick={() => {
+                      setIsFamilyMenuOpen(false);
+                      setShowInviteModal(true);
+                    }}
+                    className="flex items-center gap-3 p-2 rounded-lg text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-colors w-full text-left"
                   >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm font-medium">Add New Family</span>
+                    <Users className="w-4 h-4" />
+                    <span className="text-sm font-medium">Invite Member</span>
+                  </button>
+                  <Link
+                    to="/settings"
+                    onClick={() => setIsFamilyMenuOpen(false)}
+                    className="flex items-center gap-3 p-2 rounded-lg text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-colors w-full text-left mt-1"
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span className="text-sm font-medium">Family Settings</span>
                   </Link>
                 </div>
               </div>
@@ -124,7 +149,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden">
         <header className="h-16 md:hidden bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
-          <span className="font-bold text-lg text-indigo-600">Famly</span>
+          <span className="font-bold text-lg text-indigo-600">Famify</span>
           <button onClick={() => setIsFamilyMenuOpen(!isFamilyMenuOpen)}>
             <Home className="w-6 h-6 text-slate-600" />
           </button>
@@ -133,6 +158,43 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           {children}
         </div>
       </main>
+
+      {/* Invite Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-slate-900">Invite Member</h2>
+              <button onClick={() => setShowInviteModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div className="p-6 text-center">
+              <p className="text-slate-500 mb-6">
+                Share this code with your family member to join <strong>{activeFamily?.name}</strong>.
+              </p>
+
+              <div className="bg-slate-100 p-4 rounded-xl mb-6">
+                <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-2">Invite Code</p>
+                <p className="text-3xl font-mono font-bold text-indigo-600 tracking-widest">{inviteCode || 'Loading...'}</p>
+              </div>
+
+              <p className="text-sm text-slate-400 mb-6">
+                They can use this code on the Join screen, or you can copy the link below.
+              </p>
+
+              <button
+                onClick={() => {
+                  const link = `${window.location.origin}/#/join?code=${inviteCode}`;
+                  navigator.clipboard.writeText(link);
+                  alert('Link copied!');
+                }}
+                className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+              >
+                Copy Invite Link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
 
-export const APP_NAME = "Famly";
+export const APP_NAME = "Famify";
 export const THEME_COLOR = "#4f46e5"; // Indigo 600
 
 export const ROLE_PERMISSIONS = {

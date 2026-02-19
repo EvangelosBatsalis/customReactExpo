@@ -1,42 +1,55 @@
 
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth, useFamily } from '../App';
-import { mockDb } from '../services/mockDb';
+import { supabaseService } from '../services/supabaseService';
 import { PlusCircle, Link as LinkIcon, ArrowRight, Home } from 'lucide-react';
 
 export const Onboarding: React.FC = () => {
-  const [step, setStep] = useState<'choice' | 'create' | 'join'>('choice');
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { refreshFamilies, setActiveFamily } = useFamily();
+
+  const mode = searchParams.get('mode');
+  const [step, setStep] = useState<'choice' | 'create' | 'join'>(mode === 'create' ? 'create' : 'choice');
   const [familyName, setFamilyName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState('');
-  const { user } = useAuth();
-  const { refreshFamilies, setActiveFamily } = useFamily();
-  const navigate = useNavigate();
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!familyName.trim()) return;
+    if (!familyName.trim() || !user) return;
     try {
-      const family = mockDb.createFamily(familyName, user!.id);
-      refreshFamilies();
+      const family = await supabaseService.createFamily(familyName, user.id);
+      await refreshFamilies();
       setActiveFamily(family.id);
       navigate('/');
     } catch (err) {
+      console.error(err);
       setError('Failed to create family.');
     }
   };
 
-  const handleJoin = (e: React.FormEvent) => {
+  const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteCode.trim()) return;
+    if (!inviteCode.trim() || !user) return;
     try {
-      const invite = mockDb.acceptInvite(inviteCode, user!.id);
-      refreshFamilies();
+      // Logic for joining via code manually (less common now with links, but good backup)
+      // This assumes we have a way to lookup by code.
+      // We can use getInvite(code) then acceptInvite(id)
+      const invite = await supabaseService.getInvite(inviteCode.toUpperCase());
+      if (!invite) throw new Error("Invalid code");
+
+      await supabaseService.acceptInvite(invite.id);
+      await supabaseService.addFamilyMember(invite.familyId, user.id, 'MEMBER');
+
+      await refreshFamilies();
       setActiveFamily(invite.familyId);
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Invalid invite code');
+      console.error(err);
+      setError('Invalid or expired invite code');
     }
   };
 

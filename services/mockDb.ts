@@ -1,8 +1,8 @@
 
-import { 
-  Family, FamilyMembership, FamilyRole, UserProfile, 
-  Task, CalendarEvent, ShoppingList, ShoppingItem, 
-  FamilyInvite, InviteStatus, TaskStatus 
+import {
+  Family, FamilyMembership, FamilyRole, UserProfile,
+  Task, CalendarEvent, ShoppingList, ShoppingItem,
+  FamilyInvite, InviteStatus, TaskStatus
 } from '../types';
 
 /**
@@ -12,14 +12,14 @@ import {
  */
 
 const STORAGE_KEYS = {
-  USERS: 'famly_users',
-  FAMILIES: 'famly_families',
-  MEMBERSHIPS: 'famly_memberships',
-  TASKS: 'famly_tasks',
-  EVENTS: 'famly_events',
-  SHOPPING_LISTS: 'famly_shopping_lists',
-  SHOPPING_ITEMS: 'famly_shopping_items',
-  INVITES: 'famly_invites',
+  USERS: 'famify_users',
+  FAMILIES: 'famify_families',
+  MEMBERSHIPS: 'famify_memberships',
+  TASKS: 'famify_tasks',
+  EVENTS: 'famify_events',
+  SHOPPING_LISTS: 'famify_shopping_lists',
+  SHOPPING_ITEMS: 'famify_shopping_items',
+  INVITES: 'famify_invites',
 };
 
 const get = <T,>(key: string): T[] => {

@@ -51,7 +51,7 @@ export const Login: React.FC = () => {
         <div className="p-8 md:p-12">
           <div className="flex items-center gap-2 mb-8 justify-center">
             <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold italic text-xl">F</div>
-            <span className="text-2xl font-bold tracking-tight">Famly</span>
+            <span className="text-2xl font-bold tracking-tight">Famify</span>
           </div>
 
           <div className="text-center mb-10">
