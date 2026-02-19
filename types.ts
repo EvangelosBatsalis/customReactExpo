@@ -89,3 +89,14 @@ export interface FamilyInvite {
   inviterId: string;
   createdAt: string;
 }
+
+export interface Expense {
+  id: string;
+  familyId: string;
+  amount: number;
+  category: string;
+  description?: string;
+  date: string;
+  paidBy: string; // userId
+  createdAt: string;
+}

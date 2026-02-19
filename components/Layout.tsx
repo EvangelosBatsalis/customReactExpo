@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, CheckSquare, Calendar, ShoppingCart,
-  Settings, LogOut, Users, ChevronDown, Plus
+  Settings, LogOut, Users, ChevronDown, Plus, DollarSign
 } from 'lucide-react';
 import { authService } from '../services/authService';
 import { useFamily } from '../App';
@@ -19,8 +19,8 @@ const NavItem: React.FC<NavItemProps> = ({ to, icon, label, active }) => (
   <Link
     to={to}
     className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active
-        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-        : 'text-slate-600 hover:bg-slate-100 hover:text-indigo-600'
+      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
+      : 'text-slate-600 hover:bg-slate-100 hover:text-indigo-600'
       }`}
   >
     {icon}
@@ -103,7 +103,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <NavItem to="/" icon={<Home className="w-5 h-5" />} label="Dashboard" active={location.pathname === '/'} />
             <NavItem to="/tasks" icon={<CheckSquare className="w-5 h-5" />} label="Tasks" active={location.pathname.startsWith('/tasks')} />
             <NavItem to="/calendar" icon={<Calendar className="w-5 h-5" />} label="Calendar" active={location.pathname.startsWith('/calendar')} />
-            <NavItem to="/shopping" icon={<ShoppingCart className="w-5 h-5" />} label="Shopping" active={location.pathname.startsWith('/shopping')} />
+            <NavItem to="/shopping" icon={<ShoppingCart className="w-5 h-5" />} label="Shopping List" active={location.pathname.startsWith('/shopping')} />
+            <NavItem to="/finance" icon={<DollarSign className="w-5 h-5" />} label="Finance" active={location.pathname.startsWith('/finance')} />
             <NavItem to="/members" icon={<Users className="w-5 h-5" />} label="Members" active={location.pathname.startsWith('/members')} />
             <NavItem to="/settings" icon={<Settings className="w-5 h-5" />} label="Settings" active={location.pathname.startsWith('/settings')} />
           </nav>

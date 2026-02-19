@@ -11,6 +11,9 @@ import { Login } from './pages/Login';
 import { Onboarding } from './pages/Onboarding';
 import { Dashboard } from './pages/Dashboard';
 import { Tasks } from './pages/Tasks';
+import { Calendar } from './pages/Calendar';
+import { Shopping } from './pages/Shopping';
+import { Finance } from './pages/Finance';
 import { Layout } from './components/Layout';
 
 // Contexts
@@ -123,8 +126,9 @@ const App: React.FC = () => {
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/tasks" element={<Tasks />} />
-                      <Route path="/calendar" element={<div className="p-8 text-center text-slate-400 font-medium">Calendar feature coming soon in this demo...</div>} />
-                      <Route path="/shopping" element={<div className="p-8 text-center text-slate-400 font-medium">Shopping lists feature coming soon in this demo...</div>} />
+                      <Route path="/calendar" element={<Calendar />} />
+                      <Route path="/shopping" element={<Shopping />} />
+                      <Route path="/finance" element={<Finance />} />
                       <Route path="/members" element={<div className="p-8 text-center text-slate-400 font-medium">Members management feature coming soon in this demo...</div>} />
                       <Route path="/settings" element={<div className="p-8 text-center text-slate-400 font-medium">Settings feature coming soon in this demo...</div>} />
                     </Routes>
