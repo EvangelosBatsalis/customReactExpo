@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { 
-  Home, CheckSquare, Calendar, ShoppingCart, 
-  Settings, LogOut, Users, ChevronDown, Plus 
+import {
+  Home, CheckSquare, Calendar, ShoppingCart,
+  Settings, LogOut, Users, ChevronDown, Plus
 } from 'lucide-react';
 import { authService } from '../services/authService';
 import { useFamily } from '../App';
@@ -18,11 +18,10 @@ interface NavItemProps {
 const NavItem: React.FC<NavItemProps> = ({ to, icon, label, active }) => (
   <Link
     to={to}
-    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-      active 
-        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' 
+    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active
+        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
         : 'text-slate-600 hover:bg-slate-100 hover:text-indigo-600'
-    }`}
+      }`}
   >
     {icon}
     <span className="font-medium">{label}</span>
@@ -35,8 +34,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const navigate = useNavigate();
   const [isFamilyMenuOpen, setIsFamilyMenuOpen] = useState(false);
 
-  const handleLogout = () => {
-    authService.logout();
+  const handleLogout = async () => {
+    await authService.signOut();
     navigate('/login');
   };
 
@@ -78,9 +77,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                       setActiveFamily(membership.family?.id || null);
                       setIsFamilyMenuOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors ${
-                      activeFamily?.id === membership.familyId ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'
-                    }`}
+                    className={`w-full flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors ${activeFamily?.id === membership.familyId ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'
+                      }`}
                   >
                     <div className="w-6 h-6 bg-slate-200 rounded flex items-center justify-center text-[10px] font-bold">
                       {membership.family?.name.charAt(0)}
@@ -127,7 +125,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         <header className="h-16 md:hidden bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
           <span className="font-bold text-lg text-indigo-600">Famly</span>
           <button onClick={() => setIsFamilyMenuOpen(!isFamilyMenuOpen)}>
-             <Home className="w-6 h-6 text-slate-600" />
+            <Home className="w-6 h-6 text-slate-600" />
           </button>
         </header>
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-10">

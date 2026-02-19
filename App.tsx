@@ -4,6 +4,7 @@ import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'reac
 import { UserProfile, FamilyMembership, Family } from './types';
 import { authService } from './services/authService';
 import { mockDb } from './services/mockDb';
+import { supabase } from './supabaseClient';
 
 // Pages
 import { Login } from './pages/Login';
@@ -23,7 +24,7 @@ const FamilyContext = createContext<{
   families: FamilyMembership[];
   setActiveFamily: (id: string | null) => void;
   refreshFamilies: () => void;
-}>({ activeFamily: null, families: [], setActiveFamily: () => {}, refreshFamilies: () => {} });
+}>({ activeFamily: null, families: [], setActiveFamily: () => { }, refreshFamilies: () => { } });
 
 export const useAuth = () => useContext(AuthContext);
 export const useFamily = () => useContext(FamilyContext);
@@ -36,7 +37,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
   if (loading) return <div className="h-screen flex items-center justify-center font-bold text-indigo-600 animate-pulse">Loading Famly...</div>;
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
-  
+
   // If user has no families and not on onboarding, redirect
   if (families.length === 0 && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />;
@@ -52,14 +53,38 @@ const App: React.FC = () => {
   const [activeFamilyId, setActiveFamilyId] = useState<string | null>(null);
 
   useEffect(() => {
-    const u = authService.getCurrentUser();
-    setUser(u);
-    if (u) {
-      const f = mockDb.getFamiliesForUser(u.id);
-      setFamilies(f);
-      if (f.length > 0) setActiveFamilyId(f[0].familyId);
-    }
-    setLoading(false);
+    // Check active session
+    authService.getCurrentUser().then(u => {
+      setUser(u);
+      if (u) {
+        // Mock DB still used for families for now, until we migrate that too
+        const f = mockDb.getFamiliesForUser(u.id);
+        setFamilies(f);
+        if (f.length > 0) setActiveFamilyId(f[0].familyId);
+      }
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        const u = await authService.getCurrentUser();
+        setUser(u);
+        if (u) {
+          const f = mockDb.getFamiliesForUser(u.id);
+          setFamilies(f);
+          if (f.length > 0) setActiveFamilyId(f[0].familyId);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setFamilies([]);
+        setActiveFamilyId(null);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const refreshFamilies = () => {
@@ -73,25 +98,25 @@ const App: React.FC = () => {
 
   return (
     <AuthContext.Provider value={{ user, loading }}>
-      <FamilyContext.Provider value={{ 
-        activeFamily, 
-        families, 
+      <FamilyContext.Provider value={{
+        activeFamily,
+        families,
         setActiveFamily: setActiveFamilyId,
         refreshFamilies
       }}>
         <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
-            <Route 
-              path="/onboarding" 
+            <Route
+              path="/onboarding"
               element={
                 <ProtectedRoute>
                   <Onboarding />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/*" 
+            <Route
+              path="/*"
               element={
                 <ProtectedRoute>
                   <Layout>
@@ -105,7 +130,7 @@ const App: React.FC = () => {
                     </Routes>
                   </Layout>
                 </ProtectedRoute>
-              } 
+              }
             />
           </Routes>
         </Router>

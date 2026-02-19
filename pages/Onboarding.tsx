@@ -40,8 +40,19 @@ export const Onboarding: React.FC = () => {
     }
   };
 
+  const handleLogout = async () => {
+    await import('../services/authService').then(m => m.authService.signOut());
+    navigate('/login');
+  };
+
   return (
-    <div className="min-h-screen bg-indigo-600 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-indigo-600 flex items-center justify-center p-6 relative">
+      <button
+        onClick={handleLogout}
+        className="absolute top-6 right-6 text-indigo-200 hover:text-white font-bold text-sm"
+      >
+        Sign Out
+      </button>
       <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden p-8 md:p-12">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
@@ -103,14 +114,14 @@ export const Onboarding: React.FC = () => {
               />
             </div>
             <div className="flex gap-3">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setStep('choice')}
                 className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors"
               >
                 Back
               </button>
-              <button 
+              <button
                 type="submit"
                 className="flex-[2] bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
               >
@@ -135,14 +146,14 @@ export const Onboarding: React.FC = () => {
               />
             </div>
             <div className="flex gap-3">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setStep('choice')}
                 className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors"
               >
                 Back
               </button>
-              <button 
+              <button
                 type="submit"
                 className="flex-[2] bg-emerald-600 text-white font-bold py-3 rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all"
               >

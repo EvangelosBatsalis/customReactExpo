@@ -1,32 +1,82 @@
 
+import { supabase } from '../supabaseClient';
 import { UserProfile } from '../types';
-import { mockDb } from './mockDb';
-
-const AUTH_KEY = 'famly_session';
 
 export const authService = {
-  getCurrentUser: (): UserProfile | null => {
-    const session = localStorage.getItem(AUTH_KEY);
-    return session ? JSON.parse(session) : null;
-  },
+  async getCurrentUser(): Promise<UserProfile | null> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
 
-  login: (email: string, name: string): UserProfile => {
-    // Basic mock login - in real life this calls an API and gets a JWT
-    const existing = mockDb.getProfile(email); // using email as ID for simple mock
-    const profile: UserProfile = existing || {
-      id: email, // simple mock ID
-      email,
-      fullName: name,
+    // Check if we have profile data in metadata
+    // Or fetch from profiles table (better for consistency)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    if (profile) {
+      return {
+        id: profile.id,
+        email: profile.email,
+        fullName: profile.full_name,
+        avatarUrl: profile.avatar_url
+      };
+    }
+
+    // Fallback if profile doesn't exist yet (e.g. just signed up and trigger hasn't run or using metadata)
+    return {
+      id: user.id,
+      email: user.email || '',
+      fullName: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
     };
-    mockDb.saveProfile(profile);
-    localStorage.setItem(AUTH_KEY, JSON.stringify(profile));
-    return profile;
   },
 
-  logout: () => {
-    localStorage.removeItem(AUTH_KEY);
-    window.location.hash = '/login';
+  async signIn(email: string, password: string) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) throw error;
+    return data;
   },
 
-  isAuthenticated: () => !!localStorage.getItem(AUTH_KEY)
+  async signUp(email: string, password: string, fullName: string) {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+        },
+      },
+    });
+
+    if (error) throw error;
+
+    // Manually create profile if trigger is not set up
+    // Ideally user should run the SQL properly, but this helps
+    if (data.user) {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: data.user.id,
+            email: data.user.email,
+            full_name: fullName
+          }
+        ]);
+
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        // Don't throw here, auth was successful
+      }
+    }
+
+    return data;
+  },
+
+  async signOut() {
+    await supabase.auth.signOut();
+  }
 };
