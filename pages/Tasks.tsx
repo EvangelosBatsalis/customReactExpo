@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useFamily, useAuth } from '../App';
 import { supabaseService } from '../services/supabaseService';
 import { Task, TaskStatus, UserProfile } from '../types';
-import { Plus, CheckCircle2, Circle, Clock, Filter, Search, User, Calendar as CalIcon, Pencil, Trash2, ArrowRight, CornerDownRight, AlertCircle } from 'lucide-react';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { Plus, CheckCircle2, Circle, Clock, Filter, Search, User, Calendar as CalIcon, Pencil, Trash2, ArrowRight, CornerDownRight, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { format, parseISO, isPast, isToday } from 'date-fns';
 
 export const Tasks: React.FC = () => {
@@ -19,6 +20,25 @@ export const Tasks: React.FC = () => {
   const [dueDate, setDueDate] = useState('');
   const [assignedTo, setAssignedTo] = useState<string>('');
   const [selectedParentId, setSelectedParentId] = useState<string>('');
+
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+
+  // Confirm Modal States
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    isDanger: boolean;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    isDanger: false,
+    onConfirm: () => { }
+  });
+
+  const closeConfirmModal = () => setConfirmModal(prev => ({ ...prev, isOpen: false }));
 
   const [members, setMembers] = useState<UserProfile[]>([]);
 
@@ -73,14 +93,33 @@ export const Tasks: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const toggleExpand = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const performSaveTask = async (taskData: any) => {
+    try {
+      const savedTask = await supabaseService.upsertTask(taskData);
+      if (editingTask) {
+        setTasks(prev => prev.map(t => t.id === editingTask.id ? savedTask : t));
+      } else {
+        setTasks([savedTask, ...tasks]);
+      }
+      resetModal();
+    } catch (err) {
+      console.error("Error saving task", err);
+    }
+  };
+
   const handleSaveTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle || !activeFamily || !user) return;
-
-    if (editingTask && editingTask.title !== newTaskTitle) {
-      const confirmRename = window.confirm(`Are you sure you want to rename "${editingTask.title}" to "${newTaskTitle}"?`);
-      if (!confirmRename) return;
-    }
 
     const taskData: any = {
       familyId: activeFamily.id,
@@ -95,16 +134,35 @@ export const Tasks: React.FC = () => {
       taskData.id = editingTask.id;
     }
 
+    if (editingTask && editingTask.title !== newTaskTitle) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Rename Task',
+        message: `Are you sure you want to rename "${editingTask.title}" to "${newTaskTitle}"?`,
+        isDanger: false,
+        onConfirm: () => {
+          performSaveTask(taskData);
+          closeConfirmModal();
+        }
+      });
+      return;
+    }
+
+    performSaveTask(taskData);
+  };
+
+  const performStatusChange = async (id: string, newStatus: TaskStatus, newAssignedTo: string | undefined, originalTask: Task) => {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus, assignedTo: newAssignedTo } : t));
     try {
-      const savedTask = await supabaseService.upsertTask(taskData);
-      if (editingTask) {
-        setTasks(prev => prev.map(t => t.id === editingTask.id ? savedTask : t));
-      } else {
-        setTasks([savedTask, ...tasks]);
-      }
-      resetModal();
-    } catch (err) {
-      console.error("Error saving task", err);
+      const updated = await supabaseService.upsertTask({
+        ...originalTask,
+        status: newStatus,
+        assignedTo: newAssignedTo,
+      });
+      setTasks(prev => prev.map(t => t.id === id ? updated : t));
+    } catch (error) {
+      console.error("Failed to update status", error);
+      setTasks(prev => prev.map(t => t.id === id ? originalTask : t));
     }
   };
 
@@ -112,44 +170,31 @@ export const Tasks: React.FC = () => {
     const task = tasks.find(t => t.id === id);
     if (!task || !activeFamily || !user) return;
 
-    if (task.status === TaskStatus.DONE && newStatus === TaskStatus.TODO) {
-      const confirmReset = window.confirm(`Are you sure you want to reset "${task.title}"? It is already marked as DONE.`);
-      if (!confirmReset) return;
-    }
-
     let newAssignedTo = task.assignedTo;
     if (newStatus === TaskStatus.DOING && !task.assignedTo) {
       newAssignedTo = user.id;
     }
 
-    // Optimistic update
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus, assignedTo: newAssignedTo } : t));
-
-    try {
-      const updated = await supabaseService.upsertTask({
-        ...task,
-        status: newStatus,
-        assignedTo: newAssignedTo,
+    if (task.status === TaskStatus.DONE && newStatus === TaskStatus.TODO) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Reset Task',
+        message: `Are you sure you want to reset "${task.title}"? It is already marked as DONE.`,
+        isDanger: false,
+        onConfirm: () => {
+          performStatusChange(id, newStatus, newAssignedTo, task);
+          closeConfirmModal();
+        }
       });
-      setTasks(prev => prev.map(t => t.id === id ? updated : t));
-    } catch (error) {
-      console.error("Failed to update status", error);
-      // Revert
-      setTasks(prev => prev.map(t => t.id === id ? task : t));
+      return;
     }
+
+    performStatusChange(id, newStatus, newAssignedTo, task);
   };
 
-  const handleDeleteTask = async (id: string) => {
-    if (!activeFamily) return;
-
-    const confirmDelete = window.confirm("Are you sure you want to delete this task? This action cannot be undone.");
-    if (!confirmDelete) return;
-
-    // Optimistic
+  const executeDeleteTask = async (id: string) => {
     const previousTasks = [...tasks];
-    // Also remove any subtasks optimistically
     setTasks(prev => prev.filter(t => t.id !== id && t.parentId !== id));
-
     try {
       await supabaseService.deleteTask(id);
     } catch (err) {
@@ -158,15 +203,43 @@ export const Tasks: React.FC = () => {
     }
   };
 
+  const handleDeleteTask = async (id: string) => {
+    if (!activeFamily) return;
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Task',
+      message: "Are you sure you want to delete this task? This action cannot be undone.",
+      isDanger: true,
+      onConfirm: () => {
+        executeDeleteTask(id);
+        closeConfirmModal();
+      }
+    });
+  };
+
   // Render a single task row
   const renderTask = (task: Task, isSubtask: boolean = false) => {
     const isNextUp = nextUpTask?.id === task.id;
     const overdue = task.dueDate && isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate)) && task.status !== TaskStatus.DONE;
 
+    const subTasks = getSubTasks(task.id);
+    const hasSubtasks = !isSubtask && subTasks.length > 0;
+    const isExpanded = expandedTasks.has(task.id);
+
     return (
       <div key={task.id} className={`group flex flex-col sm:flex-row sm:items-center gap-4 p-4 md:p-5 bg-white rounded-2xl border ${isNextUp && !isSubtask ? 'border-amber-300 ring-2 ring-amber-50 shadow-md' : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'} transition-all`}>
-        <div className="flex items-center gap-4 flex-1 min-w-0">
-          {isSubtask && <CornerDownRight className="w-5 h-5 text-slate-300 shrink-0" />}
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          {isSubtask && <CornerDownRight className="w-5 h-5 ml-8 text-slate-300 shrink-0" />}
+
+          {!isSubtask && hasSubtasks ? (
+            <button onClick={(e) => toggleExpand(task.id, e)} className="p-1 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors shrink-0">
+              {isExpanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+            </button>
+          ) : !isSubtask ? (
+            <div className="w-7 shrink-0" />
+          ) : null}
+
           <button onClick={() => {
             const nextStatus = task.status === TaskStatus.TODO ? TaskStatus.DOING :
               task.status === TaskStatus.DOING ? TaskStatus.DONE : TaskStatus.TODO;
@@ -289,8 +362,8 @@ export const Tasks: React.FC = () => {
               {renderTask(task)}
 
               {/* Render Subtasks */}
-              {getSubTasks(task.id).length > 0 && (
-                <div className="pl-6 md:pl-12 flex flex-col gap-2">
+              {expandedTasks.has(task.id) && getSubTasks(task.id).length > 0 && (
+                <div className="flex flex-col gap-2">
                   {getSubTasks(task.id).map(subTask => renderTask(subTask, true))}
                 </div>
               )}
@@ -369,6 +442,15 @@ export const Tasks: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        isDanger={confirmModal.isDanger}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirmModal}
+      />
     </div>
   );
 };

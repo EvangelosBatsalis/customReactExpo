@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, useFamily } from '../App';
-import { LogOut, Plus, User, Bell, Shield, Trash2, Mail, Users, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { LogOut, Plus, User, Bell, Shield, Trash2, Mail, Users, AlertCircle, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { authService } from '../services/authService';
 import { supabaseService } from '../services/supabaseService';
 import { FamilyInvite, FamilyMembership, FamilyRole, InviteStatus } from '../types';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 export const Settings: React.FC = () => {
     const { user } = useAuth();
@@ -13,6 +14,15 @@ export const Settings: React.FC = () => {
 
     const [members, setMembers] = useState<FamilyMembership[]>([]);
     const [invites, setInvites] = useState<FamilyInvite[]>([]);
+
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false,
+        title: '',
+        message: '',
+        isDanger: false,
+        onConfirm: () => { }
+    });
+    const closeConfirmModal = () => setConfirmModal(prev => ({ ...prev, isOpen: false }));
 
     const myMembership = members.find(m => m.userId === user?.id);
     const amIAdmin = myMembership?.role === FamilyRole.OWNER || myMembership?.role === FamilyRole.ADMIN;
@@ -44,24 +54,32 @@ export const Settings: React.FC = () => {
         navigate('/onboarding?mode=create');
     };
 
+    const executeDeleteFamily = async () => {
+        if (!activeFamily) return;
+        try {
+            await supabaseService.deleteFamily(activeFamily.id);
+            setActiveFamily(null);
+            refreshFamilies(); // Trigger a refresh in App
+            navigate('/onboarding');
+        } catch (err) {
+            console.error("Failed to delete family:", err);
+            alert("Failed to delete family. You may not have permission.");
+        }
+    };
+
     const handleDeleteFamily = async () => {
         if (!activeFamily) return;
 
-        const confirmDelete = window.confirm(
-            `Are you sure you want to permanently delete the family "${activeFamily.name}"? This action cannot be undone.`
-        );
-
-        if (confirmDelete) {
-            try {
-                await supabaseService.deleteFamily(activeFamily.id);
-                setActiveFamily(null);
-                refreshFamilies(); // Trigger a refresh in App
-                navigate('/onboarding');
-            } catch (err) {
-                console.error("Failed to delete family:", err);
-                alert("Failed to delete family. You may not have permission.");
+        setConfirmModal({
+            isOpen: true,
+            title: 'Delete Family',
+            message: `Are you sure you want to permanently delete the family "${activeFamily.name}"? This action cannot be undone.`,
+            isDanger: true,
+            onConfirm: () => {
+                executeDeleteFamily();
+                closeConfirmModal();
             }
-        }
+        });
     };
 
     return (
@@ -117,8 +135,8 @@ export const Settings: React.FC = () => {
                                     </div>
                                 </div>
                                 <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${member.role === FamilyRole.OWNER || member.role === FamilyRole.ADMIN
-                                        ? 'bg-indigo-100 text-indigo-700'
-                                        : 'bg-slate-200 text-slate-600'
+                                    ? 'bg-indigo-100 text-indigo-700'
+                                    : 'bg-slate-200 text-slate-600'
                                     }`}>
                                     {member.role}
                                 </span>
@@ -214,6 +232,15 @@ export const Settings: React.FC = () => {
                     </button>
                 </div>
             )}
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                isDanger={confirmModal.isDanger}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={closeConfirmModal}
+            />
         </div>
     );
 };
