@@ -76,6 +76,12 @@ export const Tasks: React.FC = () => {
   const handleSaveTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle || !activeFamily || !user) return;
+
+    if (editingTask && editingTask.title !== newTaskTitle) {
+      const confirmRename = window.confirm(`Are you sure you want to rename "${editingTask.title}" to "${newTaskTitle}"?`);
+      if (!confirmRename) return;
+    }
+
     const taskData: any = {
       familyId: activeFamily.id,
       title: newTaskTitle,
@@ -106,8 +112,13 @@ export const Tasks: React.FC = () => {
     const task = tasks.find(t => t.id === id);
     if (!task || !activeFamily || !user) return;
 
+    if (task.status === TaskStatus.DONE && newStatus === TaskStatus.TODO) {
+      const confirmReset = window.confirm(`Are you sure you want to reset "${task.title}"? It is already marked as DONE.`);
+      if (!confirmReset) return;
+    }
+
     let newAssignedTo = task.assignedTo;
-    if (newStatus === TaskStatus.DOING) {
+    if (newStatus === TaskStatus.DOING && !task.assignedTo) {
       newAssignedTo = user.id;
     }
 
@@ -130,6 +141,9 @@ export const Tasks: React.FC = () => {
 
   const handleDeleteTask = async (id: string) => {
     if (!activeFamily) return;
+
+    const confirmDelete = window.confirm("Are you sure you want to delete this task? This action cannot be undone.");
+    if (!confirmDelete) return;
 
     // Optimistic
     const previousTasks = [...tasks];
@@ -183,19 +197,17 @@ export const Tasks: React.FC = () => {
                   {overdue && <span className="text-[10px] bg-red-100 px-1.5 rounded text-red-700 ml-1">Overdue</span>}
                 </div>
               )}
-              {task.assignedTo && (
-                <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-500 uppercase tracking-tight">
-                  <User className="w-3.5 h-3.5" />
-                  {task.assigneeName || members.find(m => m.id === task.assignedTo)?.fullName || 'Assigned'}
-                </div>
-              )}
+              <div className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-tight ${task.assignedTo ? 'text-indigo-500' : 'text-slate-400'}`}>
+                <User className="w-3.5 h-3.5" />
+                {task.assignedTo ? (task.assigneeName || members.find(m => m.id === task.assignedTo)?.fullName) : 'Everyone'}
+              </div>
             </div>
           </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 ml-10 sm:ml-0 border-t sm:border-t-0 pt-3 sm:pt-0 mt-3 sm:mt-0 border-slate-100">
           <span className={`hidden md:inline-flex px-3 py-1 mr-2 rounded-full text-[10px] font-black uppercase tracking-widest ${task.status === TaskStatus.DONE ? 'bg-indigo-50 text-indigo-600' :
-              task.status === TaskStatus.DOING ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600'
+            task.status === TaskStatus.DOING ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600'
             }`}>
             {task.status}
           </span>
@@ -330,7 +342,7 @@ export const Tasks: React.FC = () => {
                     onChange={e => setAssignedTo(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                   >
-                    <option value="">Unassigned</option>
+                    <option value="">Everyone (Whole Family)</option>
                     {members.map(m => (
                       <option key={m.id} value={m.id}>{m.fullName}</option>
                     ))}
