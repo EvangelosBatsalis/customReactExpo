@@ -54,24 +54,8 @@ export const authService = {
 
     if (error) throw error;
 
-    // Manually create profile if trigger is not set up
-    // Ideally user should run the SQL properly, but this helps
-    if (data.user) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert([
-          {
-            id: data.user.id,
-            email: data.user.email,
-            full_name: fullName
-          }
-        ]);
-
-      if (profileError) {
-        console.error('Error creating profile:', profileError);
-        // Don't throw here, auth was successful
-      }
-    }
+    // The database trigger will automatically create the profile for us
+    // No need to manually insert here anymore!
 
     return data;
   },

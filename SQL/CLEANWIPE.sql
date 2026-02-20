@@ -17,6 +17,11 @@ GRANT USAGE ON SCHEMA public TO anon;
 GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT USAGE ON SCHEMA public TO service_role;
 
+-- Restore default privileges for Supabase roles on future tables
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO postgres, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres, anon, authenticated, service_role;
+
 -- 5. (Optional) Wipe Auth Users
 -- If you want to delete all registered users from Supabase Auth as well,
 -- uncomment the following lines. DO NOT RUN THIS IN PRODUCTION.

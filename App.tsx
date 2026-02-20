@@ -5,6 +5,7 @@ import { UserProfile, FamilyMembership, Family } from './types';
 import { authService } from './services/authService';
 import { mockDb } from './services/mockDb';
 import { supabase } from './supabaseClient';
+import { supabaseService } from './services/supabaseService';
 
 // Pages
 import { Login } from './pages/Login';
@@ -59,11 +60,11 @@ const App: React.FC = () => {
 
   useEffect(() => {
     // Check active session
-    authService.getCurrentUser().then(u => {
+    authService.getCurrentUser().then(async u => {
       setUser(u);
       if (u) {
-        // Mock DB still used for families for now, until we migrate that too
-        const f = mockDb.getFamiliesForUser(u.id);
+        // Fetch real data from Supabase! 
+        const f = await supabaseService.getFamiliesForUser(u.id);
         setFamilies(f);
         if (f.length > 0) setActiveFamilyId(f[0].familyId);
       }
@@ -76,7 +77,7 @@ const App: React.FC = () => {
         const u = await authService.getCurrentUser();
         setUser(u);
         if (u) {
-          const f = mockDb.getFamiliesForUser(u.id);
+          const f = await supabaseService.getFamiliesForUser(u.id);
           setFamilies(f);
           if (f.length > 0) setActiveFamilyId(f[0].familyId);
         }
@@ -92,9 +93,9 @@ const App: React.FC = () => {
     };
   }, []);
 
-  const refreshFamilies = () => {
+  const refreshFamilies = async () => {
     if (user) {
-      const f = mockDb.getFamiliesForUser(user.id);
+      const f = await supabaseService.getFamiliesForUser(user.id);
       setFamilies(f);
     }
   };
