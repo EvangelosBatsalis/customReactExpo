@@ -53,6 +53,7 @@ CREATE TYPE task_status AS ENUM ('TODO', 'DOING', 'DONE');
 CREATE TABLE tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   family_id UUID REFERENCES families(id) ON DELETE CASCADE,
+  parent_id UUID REFERENCES tasks(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   description TEXT,
   due_date DATE,

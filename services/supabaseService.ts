@@ -25,6 +25,7 @@ export const supabaseService = {
         return family;
     },
 
+    // Families & Members
     async getFamiliesForUser(userId: string) {
         const { data, error } = await supabase
             .from('family_members')
@@ -46,6 +47,125 @@ export const supabaseService = {
                 createdAt: d.family.created_at
             }
         })) as FamilyMembership[];
+    },
+
+    async getFamilyMembers(familyId: string) {
+        const { data, error } = await supabase
+            .from('family_members')
+            .select('*, profile:profiles(*)')
+            .eq('family_id', familyId);
+
+        if (error) throw error;
+        return data.map((d: any) => ({
+            familyId: d.family_id,
+            userId: d.user_id,
+            role: d.role,
+            joinedAt: d.joined_at,
+            profile: d.profile ? {
+                id: d.profile.id,
+                email: d.profile.email,
+                fullName: d.profile.full_name,
+                avatarUrl: d.profile.avatar_url
+            } : undefined // Set to undefined instead of null to match UserProfile optional
+        })) as FamilyMembership[];
+    },
+
+    // Tasks
+    async getTasks(familyId: string) {
+        const { data, error } = await supabase
+            .from('tasks')
+            .select('*, assignee:profiles!tasks_assigned_to_fkey(full_name)')
+            .eq('family_id', familyId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data.map((d: any) => ({
+            id: d.id,
+            familyId: d.family_id,
+            parentId: d.parent_id,
+            title: d.title,
+            description: d.description,
+            status: d.status,
+            dueDate: d.due_date,
+            dueTime: d.due_time,
+            assignedTo: d.assigned_to,
+            assigneeName: d.assignee?.full_name,
+            createdBy: d.created_by,
+            createdAt: d.created_at
+        })) as Task[];
+    },
+
+    async upsertTask(task: Partial<Task> & { familyId: string, title: string }) {
+        // Construct the payload mapping our camelCase to snake_case
+        const payload: any = {
+            family_id: task.familyId,
+            parent_id: task.parentId,
+            title: task.title,
+            description: task.description,
+            due_date: task.dueDate,
+            due_time: task.dueTime,
+            assigned_to: task.assignedTo,
+            status: task.status || 'TODO',
+            created_by: task.createdBy
+        };
+
+        if (task.id) {
+            payload.id = task.id; // Include ID for update
+        }
+
+        const { data, error } = await supabase
+            .from('tasks')
+            .upsert(payload)
+            .select('*, assignee:profiles!tasks_assigned_to_fkey(full_name)')
+            .single();
+
+        if (error) throw error;
+        return {
+            id: data.id,
+            familyId: data.family_id,
+            parentId: data.parent_id,
+            title: data.title,
+            description: data.description,
+            status: data.status,
+            dueDate: data.due_date,
+            dueTime: data.due_time,
+            assignedTo: data.assigned_to,
+            assigneeName: data.assignee?.full_name,
+            createdBy: data.created_by,
+            createdAt: data.created_at
+        } as Task;
+    },
+
+    async updateTaskStatus(taskId: string, status: 'TODO' | 'IN_PROGRESS' | 'DONE') {
+        const { data, error } = await supabase
+            .from('tasks')
+            .update({ status })
+            .eq('id', taskId)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return {
+            id: data.id,
+            familyId: data.family_id,
+            parentId: data.parent_id,
+            title: data.title,
+            description: data.description,
+            status: data.status,
+            dueDate: data.due_date,
+            dueTime: data.due_time,
+            assignedTo: data.assigned_to,
+            createdBy: data.created_by,
+            createdAt: data.created_at
+        } as Task;
+    },
+
+    async deleteTask(taskId: string) {
+        const { error } = await supabase
+            .from('tasks')
+            .delete()
+            .eq('id', taskId);
+        if (error) throw error;
     },
 
     // Shopping Lists
@@ -298,6 +418,34 @@ export const supabaseService = {
             status: data.status,
             createdAt: data.created_at
         }; // Returns object with inviteCode
+    },
+
+    async getFamilyInvites(familyId: string) {
+        const { data, error } = await supabase
+            .from('invites')
+            .select('*')
+            .eq('family_id', familyId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data.map((d: any) => ({
+            id: d.id,
+            familyId: d.family_id,
+            email: d.email,
+            inviteCode: d.invite_code,
+            role: d.role,
+            status: d.status,
+            inviterId: d.inviter_id,
+            createdAt: d.created_at
+        }));
+    },
+
+    async deleteFamily(familyId: string) {
+        const { error } = await supabase
+            .from('families')
+            .delete()
+            .eq('id', familyId);
+        if (error) throw error;
     },
 
     async getInvite(code: string) {

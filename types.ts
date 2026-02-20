@@ -38,16 +38,19 @@ export interface FamilyMembership {
   role: FamilyRole;
   joinedAt: string;
   family?: Family; // Populated when fetching memberships
+  profile?: UserProfile;
 }
 
 export interface Task {
   id: string;
   familyId: string;
+  parentId?: string;
   title: string;
   description?: string;
   dueDate?: string;
   dueTime?: string;
   assignedTo?: string; // userId
+  assigneeName?: string; // Joined from profiles
   status: TaskStatus;
   createdBy: string;
   createdAt: string;

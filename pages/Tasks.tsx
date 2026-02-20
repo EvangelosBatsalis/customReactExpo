@@ -1,10 +1,9 @@
-
 import React, { useEffect, useState } from 'react';
 import { useFamily, useAuth } from '../App';
-import { mockDb } from '../services/mockDb';
+import { supabaseService } from '../services/supabaseService';
 import { Task, TaskStatus, UserProfile } from '../types';
-import { Plus, CheckCircle2, Circle, Clock, Filter, Search, User, Calendar as CalIcon, Pencil, Trash2, ArrowRight } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { Plus, CheckCircle2, Circle, Clock, Filter, Search, User, Calendar as CalIcon, Pencil, Trash2, ArrowRight, CornerDownRight, AlertCircle } from 'lucide-react';
+import { format, parseISO, isPast, isToday } from 'date-fns';
 
 export const Tasks: React.FC = () => {
   const { activeFamily } = useFamily();
@@ -12,19 +11,33 @@ export const Tasks: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filter, setFilter] = useState<TaskStatus | 'ALL'>('ALL');
   const [search, setSearch] = useState('');
+
+  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [assignedTo, setAssignedTo] = useState<string>('');
+  const [selectedParentId, setSelectedParentId] = useState<string>('');
+
   const [members, setMembers] = useState<UserProfile[]>([]);
 
   useEffect(() => {
-    if (activeFamily) {
-      setTasks(mockDb.getTasks(activeFamily.id));
-      const familyMembers = mockDb.getFamilyMembers(activeFamily.id);
-      setMembers(familyMembers.map(m => m.profile).filter((p): p is UserProfile => p !== undefined));
-    }
+    const fetchTasks = async () => {
+      if (activeFamily) {
+        try {
+          const [fetchedTasks, fetchedMembers] = await Promise.all([
+            supabaseService.getTasks(activeFamily.id),
+            supabaseService.getFamilyMembers(activeFamily.id)
+          ]);
+          setTasks(fetchedTasks);
+          setMembers(fetchedMembers.map(m => m.profile).filter((p): p is UserProfile => p !== null && p !== undefined));
+        } catch (error) {
+          console.error("Error fetching tasks:", error);
+        }
+      }
+    };
+    fetchTasks();
   }, [activeFamily]);
 
   const filteredTasks = tasks.filter(t => {
@@ -33,12 +46,22 @@ export const Tasks: React.FC = () => {
     return matchesFilter && matchesSearch;
   });
 
+  const parentTasks = filteredTasks.filter(t => !t.parentId);
+  const getSubTasks = (parentId: string) => tasks.filter(t => t.parentId === parentId);
+
+  // Next Up logic: Nearest due date that is not done
+  const pendingTasksWithDates = tasks.filter(t => t.status !== TaskStatus.DONE && t.dueDate);
+  const nextUpTask = pendingTasksWithDates.length > 0
+    ? [...pendingTasksWithDates].sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())[0]
+    : null;
+
   const resetModal = () => {
     setIsModalOpen(false);
     setEditingTask(null);
     setNewTaskTitle('');
     setDueDate('');
     setAssignedTo('');
+    setSelectedParentId('');
   };
 
   const openEditModal = (task: Task) => {
@@ -46,10 +69,11 @@ export const Tasks: React.FC = () => {
     setNewTaskTitle(task.title);
     setDueDate(task.dueDate || '');
     setAssignedTo(task.assignedTo || '');
+    setSelectedParentId(task.parentId || '');
     setIsModalOpen(true);
   };
 
-  const handleSaveTask = (e: React.FormEvent) => {
+  const handleSaveTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle || !activeFamily || !user) return;
     const taskData: any = {
@@ -57,22 +81,28 @@ export const Tasks: React.FC = () => {
       title: newTaskTitle,
       dueDate: dueDate || undefined,
       assignedTo: assignedTo || undefined,
+      parentId: selectedParentId || undefined,
       createdBy: editingTask ? editingTask.createdBy : user.id,
       status: editingTask ? editingTask.status : TaskStatus.TODO
     };
     if (editingTask) {
       taskData.id = editingTask.id;
     }
-    const savedTask = mockDb.upsertTask(taskData);
-    if (editingTask) {
-      setTasks(prev => prev.map(t => t.id === editingTask.id ? savedTask : t));
-    } else {
-      setTasks([savedTask, ...tasks]);
+
+    try {
+      const savedTask = await supabaseService.upsertTask(taskData);
+      if (editingTask) {
+        setTasks(prev => prev.map(t => t.id === editingTask.id ? savedTask : t));
+      } else {
+        setTasks([savedTask, ...tasks]);
+      }
+      resetModal();
+    } catch (err) {
+      console.error("Error saving task", err);
     }
-    resetModal();
   };
 
-  const handleStatusChange = (id: string, newStatus: TaskStatus) => {
+  const handleStatusChange = async (id: string, newStatus: TaskStatus) => {
     const task = tasks.find(t => t.id === id);
     if (!task || !activeFamily || !user) return;
 
@@ -81,20 +111,112 @@ export const Tasks: React.FC = () => {
       newAssignedTo = user.id;
     }
 
-    const updated = mockDb.upsertTask({
-      ...task,
-      status: newStatus,
-      assignedTo: newAssignedTo,
-      familyId: activeFamily.id,
-      createdBy: task.createdBy
-    });
-    setTasks(prev => prev.map(t => t.id === id ? updated : t));
+    // Optimistic update
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus, assignedTo: newAssignedTo } : t));
+
+    try {
+      const updated = await supabaseService.upsertTask({
+        ...task,
+        status: newStatus,
+        assignedTo: newAssignedTo,
+      });
+      setTasks(prev => prev.map(t => t.id === id ? updated : t));
+    } catch (error) {
+      console.error("Failed to update status", error);
+      // Revert
+      setTasks(prev => prev.map(t => t.id === id ? task : t));
+    }
   };
 
-  const handleDeleteTask = (id: string) => {
+  const handleDeleteTask = async (id: string) => {
     if (!activeFamily) return;
-    mockDb.deleteTask(id, activeFamily.id);
-    setTasks(prev => prev.filter(t => t.id !== id));
+
+    // Optimistic
+    const previousTasks = [...tasks];
+    // Also remove any subtasks optimistically
+    setTasks(prev => prev.filter(t => t.id !== id && t.parentId !== id));
+
+    try {
+      await supabaseService.deleteTask(id);
+    } catch (err) {
+      console.error("Error deleting task:", err);
+      setTasks(previousTasks);
+    }
+  };
+
+  // Render a single task row
+  const renderTask = (task: Task, isSubtask: boolean = false) => {
+    const isNextUp = nextUpTask?.id === task.id;
+    const overdue = task.dueDate && isPast(parseISO(task.dueDate)) && !isToday(parseISO(task.dueDate)) && task.status !== TaskStatus.DONE;
+
+    return (
+      <div key={task.id} className={`group flex flex-col sm:flex-row sm:items-center gap-4 p-4 md:p-5 bg-white rounded-2xl border ${isNextUp && !isSubtask ? 'border-amber-300 ring-2 ring-amber-50 shadow-md' : 'border-slate-200 hover:border-indigo-300 hover:shadow-md'} transition-all`}>
+        <div className="flex items-center gap-4 flex-1 min-w-0">
+          {isSubtask && <CornerDownRight className="w-5 h-5 text-slate-300 shrink-0" />}
+          <button onClick={() => {
+            const nextStatus = task.status === TaskStatus.TODO ? TaskStatus.DOING :
+              task.status === TaskStatus.DOING ? TaskStatus.DONE : TaskStatus.TODO;
+            handleStatusChange(task.id, nextStatus);
+          }} className="shrink-0 mt-0.5 sm:mt-0">
+            {task.status === TaskStatus.DONE ? <CheckCircle2 className="w-6 h-6 md:w-7 md:h-7 text-indigo-600" /> :
+              task.status === TaskStatus.DOING ? <ArrowRight className="w-6 h-6 md:w-7 md:h-7 text-amber-500" /> :
+                <Circle className="w-6 h-6 md:w-7 md:h-7 text-slate-300 group-hover:text-indigo-400" />}
+          </button>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className={`font-bold text-base md:text-lg truncate ${task.status === TaskStatus.DONE ? 'line-through text-slate-400' : 'text-slate-900'}`}>
+                {task.title}
+              </p>
+              {isNextUp && !isSubtask && task.status !== TaskStatus.DONE && (
+                <span className="bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Next Up
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 mt-1.5">
+              {task.dueDate && (
+                <div className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-tight ${overdue ? 'text-red-500' : 'text-slate-500'}`}>
+                  <CalIcon className="w-3.5 h-3.5" />
+                  {format(parseISO(task.dueDate), 'MMM do, yyyy')}
+                  {overdue && <span className="text-[10px] bg-red-100 px-1.5 rounded text-red-700 ml-1">Overdue</span>}
+                </div>
+              )}
+              {task.assignedTo && (
+                <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-500 uppercase tracking-tight">
+                  <User className="w-3.5 h-3.5" />
+                  {task.assigneeName || members.find(m => m.id === task.assignedTo)?.fullName || 'Assigned'}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 ml-10 sm:ml-0 border-t sm:border-t-0 pt-3 sm:pt-0 mt-3 sm:mt-0 border-slate-100">
+          <span className={`hidden md:inline-flex px-3 py-1 mr-2 rounded-full text-[10px] font-black uppercase tracking-widest ${task.status === TaskStatus.DONE ? 'bg-indigo-50 text-indigo-600' :
+              task.status === TaskStatus.DOING ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600'
+            }`}>
+            {task.status}
+          </span>
+          <button onClick={() => openEditModal(task)} className="p-2 md:p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors" title="Edit Task">
+            <Pencil className="w-4 h-4 md:w-4 md:h-4" />
+          </button>
+          {!isSubtask && (
+            <button onClick={() => {
+              resetModal();
+              setSelectedParentId(task.id);
+              setIsModalOpen(true);
+            }} className="p-2 md:p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded-lg transition-colors" title="Add Subtask">
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
+          <button onClick={() => handleDeleteTask(task.id)} className="p-2 md:p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded-lg transition-colors" title="Delete Task">
+            <Trash2 className="w-4 h-4 md:w-4 md:h-4" />
+          </button>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -140,55 +262,26 @@ export const Tasks: React.FC = () => {
       </div>
 
       {/* Task List */}
-      <div className="grid grid-cols-1 gap-3">
-        {filteredTasks.length === 0 ? (
+      <div className="grid grid-cols-1 gap-4">
+        {parentTasks.length === 0 && search === '' && filter === 'ALL' ? (
           <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
-            <p className="text-slate-400">No tasks found. Try adjusting your filters.</p>
+            <p className="text-slate-400">No tasks found. Time to add something!</p>
+          </div>
+        ) : parentTasks.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
+            <p className="text-slate-400">No matching tasks found.</p>
           </div>
         ) : (
-          filteredTasks.map(task => (
-            <div key={task.id} className="group flex items-center gap-4 p-5 bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all">
-              <button onClick={() => {
-                const nextStatus = task.status === TaskStatus.TODO ? TaskStatus.DOING :
-                  task.status === TaskStatus.DOING ? TaskStatus.DONE : TaskStatus.TODO;
-                handleStatusChange(task.id, nextStatus);
-              }} className="shrink-0">
-                {task.status === TaskStatus.DONE ? <CheckCircle2 className="w-7 h-7 text-indigo-600" /> :
-                  task.status === TaskStatus.DOING ? <ArrowRight className="w-7 h-7 text-amber-500" /> :
-                    <Circle className="w-7 h-7 text-slate-300 group-hover:text-indigo-400" />}
-              </button>
-              <div className="flex-1 min-w-0">
-                <p className={`font-bold text-lg truncate ${task.status === TaskStatus.DONE ? 'line-through text-slate-400' : 'text-slate-900'}`}>
-                  {task.title}
-                </p>
-                <div className="flex flex-wrap items-center gap-4 mt-1">
-                  {task.dueDate && (
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase tracking-tight">
-                      <CalIcon className="w-3.5 h-3.5" />
-                      {format(parseISO(task.dueDate), 'MMM do, yyyy')}
-                    </div>
-                  )}
-                  {task.assignedTo && (
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-500 uppercase tracking-tight">
-                      <User className="w-3.5 h-3.5" />
-                      {members.find(m => m.id === task.assignedTo)?.fullName || 'Assigned'}
-                    </div>
-                  )}
+          parentTasks.map(task => (
+            <div key={task.id} className="space-y-2">
+              {renderTask(task)}
+
+              {/* Render Subtasks */}
+              {getSubTasks(task.id).length > 0 && (
+                <div className="pl-6 md:pl-12 flex flex-col gap-2">
+                  {getSubTasks(task.id).map(subTask => renderTask(subTask, true))}
                 </div>
-              </div>
-              <div className="hidden md:flex items-center gap-2">
-                <span className={`px-3 py-1 mr-2 rounded-full text-[10px] font-black uppercase tracking-widest ${task.status === TaskStatus.DONE ? 'bg-indigo-50 text-indigo-600' :
-                    task.status === TaskStatus.DOING ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600'
-                  }`}>
-                  {task.status}
-                </span>
-                <button onClick={() => openEditModal(task)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors">
-                  <Pencil className="w-4 h-4" />
-                </button>
-                <button onClick={() => handleDeleteTask(task.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 rounded-lg transition-colors">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+              )}
             </div>
           ))
         )}
@@ -196,10 +289,18 @@ export const Tasks: React.FC = () => {
 
       {/* Edit/Create Task Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden">
-            <div className="p-8">
-              <h2 className="text-2xl font-bold mb-6">{editingTask ? 'Edit Task' : 'Create New Task'}</h2>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden my-auto">
+            <div className="p-6 sm:p-8 space-y-6">
+              <h2 className="text-2xl font-bold">{editingTask ? 'Edit Task' : selectedParentId ? 'Add Sub-task' : 'Create New Task'}</h2>
+
+              {selectedParentId && (
+                <div className="p-3 bg-indigo-50 text-indigo-800 text-sm rounded-xl font-medium flex items-center gap-2">
+                  <CornerDownRight className="w-4 h-4" />
+                  Under: {tasks.find(t => t.id === selectedParentId)?.title}
+                </div>
+              )}
+
               <form onSubmit={handleSaveTask} className="space-y-6">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Title</label>
@@ -235,7 +336,8 @@ export const Tasks: React.FC = () => {
                     ))}
                   </select>
                 </div>
-                <div className="flex gap-4 pt-4">
+
+                <div className="flex gap-3 sm:gap-4 pt-4">
                   <button
                     type="button"
                     onClick={resetModal}
@@ -245,9 +347,9 @@ export const Tasks: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="flex-[2] bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all"
+                    className="flex-[2] bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all flex items-center justify-center"
                   >
-                    {editingTask ? 'Save Changes' : 'Add Task'}
+                    {editingTask ? 'Save Changes' : 'Save Task'}
                   </button>
                 </div>
               </form>

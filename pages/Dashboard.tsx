@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useFamily } from '../App';
-import { mockDb } from '../services/mockDb';
+import { supabaseService } from '../services/supabaseService';
 import { Task, CalendarEvent, TaskStatus } from '../types';
 import { format, isSameDay, parseISO } from 'date-fns';
 import { CheckCircle2, Circle, Clock, ArrowRight, ListTodo, Calendar as CalendarIcon, Users } from 'lucide-react';
@@ -14,11 +14,28 @@ export const Dashboard: React.FC = () => {
   const [members, setMembers] = useState<any[]>([]);
 
   useEffect(() => {
-    if (activeFamily) {
-      setTasks(mockDb.getTasks(activeFamily.id));
-      setEvents(mockDb.getEvents(activeFamily.id));
-      setMembers(mockDb.getFamilyMembers(activeFamily.id));
-    }
+    const fetchData = async () => {
+      if (activeFamily) {
+        // Fetch real data from supabase
+        // Note: For tasks and members, we need to add these methods to supabaseService if they don't exist
+        // Currently supabaseService has getEvents but we might need to add getTasks and getFamilyMembers
+        try {
+          // We will add getTasks and getFamilyMembers to supabaseService next if they are missing
+          const [fetchedTasks, fetchedEvents, fetchedMembers] = await Promise.all([
+            supabaseService.getTasks ? supabaseService.getTasks(activeFamily.id) : Promise.resolve([]),
+            supabaseService.getEvents(activeFamily.id),
+            supabaseService.getFamilyMembers ? supabaseService.getFamilyMembers(activeFamily.id) : Promise.resolve([])
+          ]);
+          setTasks(fetchedTasks || []);
+          setEvents(fetchedEvents || []);
+          setMembers(fetchedMembers || []);
+        } catch (error) {
+          console.error("Error fetching dashboard data:", error);
+        }
+      }
+    };
+
+    fetchData();
   }, [activeFamily]);
 
   const today = new Date();
@@ -26,14 +43,21 @@ export const Dashboard: React.FC = () => {
   const todayEvents = events.filter(e => isSameDay(parseISO(e.startAt), today));
   const completedTasksCount = tasks.filter(t => t.status === TaskStatus.DONE).length;
 
-  const toggleTask = (taskId: string) => {
+  const toggleTask = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
-    const updated = mockDb.upsertTask({
-      ...task,
-      status: task.status === TaskStatus.DONE ? TaskStatus.TODO : TaskStatus.DONE
-    });
-    setTasks(prev => prev.map(t => t.id === taskId ? updated : t));
+
+    // Optimistic update
+    const newStatus = task.status === TaskStatus.DONE ? TaskStatus.TODO : TaskStatus.DONE;
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+
+    try {
+      await supabaseService.updateTaskStatus(taskId, newStatus);
+    } catch (err) {
+      console.error("Failed to update task", err);
+      // Revert on error
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: task.status } : t));
+    }
   };
 
   return (
@@ -105,25 +129,25 @@ export const Dashboard: React.FC = () => {
                   <p className="text-slate-400">Quiet day! Nothing on the schedule.</p>
                 </div>
               )}
-              
+
               {/* Combine Events and Tasks for Today */}
               {todayEvents.map(event => (
                 <div key={event.id} className="group flex gap-4 p-4 rounded-2xl bg-amber-50 border border-amber-100 transition-all">
-                   <div className="w-12 h-12 bg-amber-200 text-amber-800 rounded-xl flex flex-col items-center justify-center shrink-0">
-                     <CalendarIcon className="w-5 h-5" />
-                   </div>
-                   <div className="flex-1">
-                     <p className="font-bold text-amber-900">{event.title}</p>
-                     <p className="text-sm text-amber-700">{format(parseISO(event.startAt), 'h:mm a')}</p>
-                   </div>
+                  <div className="w-12 h-12 bg-amber-200 text-amber-800 rounded-xl flex flex-col items-center justify-center shrink-0">
+                    <CalendarIcon className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-bold text-amber-900">{event.title}</p>
+                    <p className="text-sm text-amber-700">{format(parseISO(event.startAt), 'h:mm a')}</p>
+                  </div>
                 </div>
               ))}
 
               {todayTasks.map(task => (
                 <div key={task.id} className="group flex gap-4 p-4 rounded-2xl bg-white border border-slate-200 hover:border-indigo-200 hover:shadow-md transition-all">
                   <button onClick={() => toggleTask(task.id)} className="shrink-0 mt-1">
-                    {task.status === TaskStatus.DONE 
-                      ? <CheckCircle2 className="w-6 h-6 text-indigo-600" /> 
+                    {task.status === TaskStatus.DONE
+                      ? <CheckCircle2 className="w-6 h-6 text-indigo-600" />
                       : <Circle className="w-6 h-6 text-slate-300 group-hover:text-indigo-400" />
                     }
                   </button>
@@ -139,7 +163,7 @@ export const Dashboard: React.FC = () => {
                 </div>
               ))}
             </div>
-            
+
             <div className="mt-8 pt-6 border-t border-slate-100 flex gap-4">
               <Link to="/tasks" className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold py-3 px-4 rounded-xl text-center text-sm transition-colors">View All Tasks</Link>
               <Link to="/calendar" className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold py-3 px-4 rounded-xl text-center text-sm transition-colors">View Calendar</Link>
@@ -170,7 +194,7 @@ export const Dashboard: React.FC = () => {
                 </div>
               ))}
             </div>
-            <button 
+            <button
               onClick={() => window.location.hash = '#/members'}
               className="mt-8 w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-500 font-medium hover:border-indigo-400 hover:text-indigo-600 transition-all group"
             >
