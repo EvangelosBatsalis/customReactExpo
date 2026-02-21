@@ -9,7 +9,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 
 export const Settings: React.FC = () => {
     const { user } = useAuth();
-    const { activeFamily, setActiveFamily, refreshFamilies } = useFamily();
+    const { activeFamily, families, setActiveFamily, refreshFamilies } = useFamily();
     const navigate = useNavigate();
 
     const [members, setMembers] = useState<FamilyMembership[]>([]);
@@ -58,9 +58,19 @@ export const Settings: React.FC = () => {
         if (!activeFamily) return;
         try {
             await supabaseService.deleteFamily(activeFamily.id);
-            setActiveFamily(null);
-            refreshFamilies(); // Trigger a refresh in App
-            navigate('/onboarding');
+
+            // Find another family to switch to, if any
+            const remainingFamilies = families.filter(f => f.familyId !== activeFamily.id);
+
+            if (remainingFamilies.length > 0) {
+                setActiveFamily(remainingFamilies[0]);
+                navigate('/'); // Go to dashboard of next family
+            } else {
+                setActiveFamily(null);
+                navigate('/onboarding');
+            }
+
+            refreshFamilies(); // Trigger a refresh in App to update lists
         } catch (err) {
             console.error("Failed to delete family:", err);
             alert("Failed to delete family. You may not have permission.");

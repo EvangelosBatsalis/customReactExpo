@@ -62,8 +62,16 @@ export const Tasks: React.FC = () => {
 
   const filteredTasks = tasks.filter(t => {
     const matchesFilter = filter === 'ALL' || t.status === filter;
+
+    // Check if the task itself matches the search
     const matchesSearch = t.title.toLowerCase().includes(search.toLowerCase());
-    return matchesFilter && matchesSearch;
+
+    // Check if any of its subtasks match the search
+    const hasMatchingSubtask = tasks.some(sub =>
+      sub.parentId === t.id && sub.title.toLowerCase().includes(search.toLowerCase())
+    );
+
+    return matchesFilter && (matchesSearch || hasMatchingSubtask);
   });
 
   const parentTasks = filteredTasks.filter(t => !t.parentId);
